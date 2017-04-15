@@ -13,14 +13,14 @@ import lxml.html
 #from douban_movies_comms import set_query_parameter
 
 DEFAULT_AGENT = 'Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.04'
-DEFAULT_DELAY = 5
+DEFAULT_DELAY = 3
 DEFAULT_RETRIES = 1
 DEFAULT_TIMEOUT = 60
 
 
 class Downloader:
     def __init__(self, delay=DEFAULT_DELAY, user_agent=DEFAULT_AGENT, proxies=None, num_retries=DEFAULT_RETRIES,
-                 timeout=DEFAULT_TIMEOUT, opener=None, cache=None):
+                 timeout=DEFAULT_TIMEOUT, opener=None, cache=None,cookie=None):
         socket.setdefaulttimeout(timeout)
         self.throttle = Throttle(delay)
         self.user_agent = user_agent
@@ -28,6 +28,7 @@ class Downloader:
         self.num_retries = num_retries
         self.opener = opener
         self.cache = cache
+        self.cookie = cookie
 
     def __call__(self, url):
         result = None
@@ -46,6 +47,8 @@ class Downloader:
             self.throttle.wait(url)
             proxy = random.choice(self.proxies) if self.proxies else None
             headers = {'User-agent': self.user_agent}
+            if  self.cookie :
+                headers['Cookie'] = self.cookie['Cookie']
             result = self.download(url, headers, proxy=proxy, num_retries=self.num_retries)
             if self.cache:
                 # save result to cache
@@ -113,10 +116,11 @@ class Throttle:
 '''
 def main():
     base_url = 'https://movie.douban.com/subject/26683290/comments?start=0&limit=20&sort=new_score&status=P'
-    headers = {'Cookie': 'dbcl2=110626009:C37wlSp6zbg'}
+    cookie = {'Cookie': 'dbcl2=110626009:C37wlSp6zbg'}
+    downloader = Downloader(cache=mongo_cache.MongoCache(),cookie=cookie)
     for i in range(0, 100, 20):
         new_url = set_query_parameter(base_url, 'start', i)
-        response = Downloader().download(url=base_url,headers=headers,proxy= None,num_retries=3)
+        response = downloader(new_url)
 
         if response['code'] != 200:
             print '访问出错...'
@@ -129,7 +133,7 @@ def main():
             # print p.text_content()
             comms.append(p.text_content().encode('utf-8'))
         print len(comms)
-        with open('comments_yam1.txt', 'a+') as f:
+        with open('comments.txt', 'a+') as f:
             f.writelines(comms)
         print 'finish %d th download' % (i / 20)
 

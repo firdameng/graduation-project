@@ -1,16 +1,16 @@
 # coding=utf-8
-import cookielib
+
 import threading
-import urllib2
 from urllib import urlencode
 from urlparse import parse_qs, urlsplit, urlunsplit
 from time import ctime, time  # 测试时间
 import lxml.html
 
+import mongo_cache
 from downloader import Downloader, DEFAULT_RETRIES
 from mongo_helper import Mongodb_Helper
 
-COOKIE = {'dbcl2': '110626009:C37wlSp6zbg'}
+COOKIE = {'dbcl2': '110626009:ZBpKPngkvYA'}
 DATABASE_NAME = 'douban_movie_comments'
 
 def set_query_parameter(url, param_name, param_value):
@@ -23,16 +23,15 @@ def set_query_parameter(url, param_name, param_value):
 
 def task(base_url, start, stop, db_helper, col):
 
-    headers = {'Cookie': '%s=%s' % (k, v) for k, v in COOKIE.items()}
-
+    cookie = {'Cookie': '%s=%s' % (k, v) for k, v in COOKIE.items()}
+    downloader = Downloader(cache=mongo_cache.MongoCache(),cookie=cookie)
     for i in range(start, stop, 20):
         new_url = set_query_parameter(base_url, 'start', i)
 
         # ---------------IO流中的输入流----------------------------------------
-        response = Downloader().download(url=base_url, headers=headers, proxy=None, num_retries=DEFAULT_RETRIES)
-
+        response = downloader(new_url)
         if response['code'] != 200:
-            print '访问出错...'
+            print u'访问出错...'
             break
         # -------------格式化处理--------------------------------------------
         comm_elements = lxml.html.fromstring(response['html']).cssselect('div#comments .comment')
@@ -58,10 +57,10 @@ def task(base_url, start, stop, db_helper, col):
 
 
 def main():
-    base_url = 'https://movie.douban.com/subject/6791750/comments?start=0&limit=20&sort=new_score&status=P'
+    base_url = 'https://movie.douban.com/subject/1291560/comments?start=0&limit=20&sort=new_score&status=P'
     movie_id = base_url.split('/')[4]
-    comm_sum = 30000
-    thread_sum = 10
+    comm_sum = 50000
+    thread_sum = 5
     comments_one_thread = comm_sum / thread_sum
     threads = []
     db_douban_helper = Mongodb_Helper(db=DATABASE_NAME)
