@@ -29,12 +29,12 @@ def task(base_url, start, stop, db_helper, col):
         new_url = set_query_parameter(base_url, 'start', i)
 
         # ---------------IO流中的输入流----------------------------------------
-        response = downloader(new_url)
-        if response['code'] != 200:
+        html ,code = downloader(new_url)
+        if code != 200:
             print u'访问出错...'
             break
         # -------------格式化处理--------------------------------------------
-        comm_elements = lxml.html.fromstring(response['html']).cssselect('div#comments .comment')
+        comm_elements = lxml.html.fromstring(html).cssselect('div#comments .comment')
         comments = []
         for e in comm_elements:
             # 构建mongodb中comment文档
@@ -59,8 +59,8 @@ def task(base_url, start, stop, db_helper, col):
 def main():
     base_url = 'https://movie.douban.com/subject/1291560/comments?start=0&limit=20&sort=new_score&status=P'
     movie_id = base_url.split('/')[4]
-    comm_sum = 50000
-    thread_sum = 5
+    comm_sum = 10000
+    thread_sum = 2
     comments_one_thread = comm_sum / thread_sum
     threads = []
     db_douban_helper = Mongodb_Helper(db=DATABASE_NAME)

@@ -12,7 +12,7 @@ import lxml.html
 
 #from douban_movies_comms import set_query_parameter
 
-DEFAULT_AGENT = 'Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.04'
+DEFAULT_AGENT = 'wswp'
 DEFAULT_DELAY = 3
 DEFAULT_RETRIES = 1
 DEFAULT_TIMEOUT = 60
@@ -53,7 +53,7 @@ class Downloader:
             if self.cache:
                 # save result to cache
                 self.cache[url] = result
-        return result['html']
+        return result['html'],result['code']
 
     def download(self, url, headers, proxy, num_retries, data=None):
         dt0 = time.time()
