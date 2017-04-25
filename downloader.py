@@ -31,6 +31,7 @@ class Downloader:
         self.cookie = cookie
 
     def __call__(self, url):
+        print url
         result = None
         if self.cache:
             try:
@@ -42,7 +43,9 @@ class Downloader:
                 if self.num_retries > 0 and 500 <= result['code'] < 600:
                     # server error so ignore result from cache and re-download
                     result = None
-        if result is None:
+        #print result
+        if result is None or not result['html'] or result['html'] == '':
+            #print result
             # result was not loaded from cache so still need to download
             self.throttle.wait(url)
             proxy = random.choice(self.proxies) if self.proxies else None
