@@ -8,7 +8,7 @@ from celery_app import app
 from celery.result import AsyncResult
 import xml.etree.ElementTree as ET
 
-url_get_base = "http://127.0.0.1:12346/ltp"
+url_get_base = "http://127.0.0.1:12345/ltp"
 args = {
     u'x': u'n',
     u't': u'dp'
@@ -35,8 +35,8 @@ def ltp_comment_np_xml(self, comment):
 
         # 关联评论ID和依存句法分析对
         jResult = {comment['_id']:[]}
-        for w in ET.fromstring(xml_str).iter('word'):
-            jResult[comment['_id']].append(w.attrib)
+        for s in ET.fromstring(xml_str).iter('sent'):
+            jResult[comment['_id']].append(map(lambda w:w.attrib,s.findall('word')))
         return jResult
         #return  xml_str
     except Exception as exc:
