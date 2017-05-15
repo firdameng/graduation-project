@@ -13,7 +13,7 @@ def parseComment2Dp():
     db = client.get_database(db_name)
     collection = db.get_collection(coll_name)
     # cursor = collection.find({'_id': {'$lt': 1001}})
-    cursor = collection.find().limit(10)
+    cursor = collection.find()
     for c in cursor:
         tasks.ltp_comment_np_xml.delay(c)
     client.close()
@@ -31,49 +31,56 @@ def getDpPairSet(comment_dp_result_str):
     comment_dp_result = json.loads(comment_dp_result_str)
     commDp = comment_dp_result.values()[0]
     commId = comment_dp_result.keys()[0]
-    for w in commDp:
+    count = 0
+    for l in commDp:  # 评论存在多句，commDp是个二维list
+        count += 1
+        for w in l:
         # 如果主谓关系
-        if w['relate'] in dpPairSet.keys():
-            w_relate = w['relate']
-            w_child = getWordFromComm(w['parent'], commDp)
-            dpPairSet[w_relate].append(
-                {
-                    's_id': commId,
-                    'parent': w if w_relate in ['ATT', 'SBV'] else w_child,  # 主语
-                    'child': w_child if w_relate in ['ATT', 'SBV'] else w,  # 谓语
-                    'w_relate': w_relate
-                }
-            )
-            m_child = m_parent = None
-            for m in commDp:
-                # 如果m和w并列，则添加(w_parent,m)
-                if m['relate'] == 'COO' and m['parent'] == w['id']:
-                    m_parent = m
-                    dpPairSet[w_relate].append(
-                        {
-                            's_id': commId,
-                            'parent': m if w_relate in ['ATT', 'SBV'] else w_child,
-                            'child': w_child if w_relate in ['ATT', 'SBV'] else w,
-                            'w_relate': w_relate
-                        })
-                # 如果m和w_parent并列，则添加(m,w)
-                if m['relate'] == 'COO' and m['parent'] == w['parent']:
-                    m_child = m
-                    dpPairSet[w_relate].append(
-                        {
-                            's_id': commId,
-                            'parent': w if w_relate in ['ATT', 'SBV'] else m,
-                            'child': m if w_relate in ['ATT', 'SBV'] else w,
-                            'w_relate': w_relate
-                        })
-            if m_child and m_parent:
+            if w['relate'] in dpPairSet:
+                w_relate = w['relate']
+                w_child = getWordFromComm(w['parent'], l)
                 dpPairSet[w_relate].append(
                     {
                         's_id': commId,
-                        'parent': m_parent if w_relate in ['ATT', 'SBV'] else m_child,
-                        'child': m_child if w_relate in ['ATT', 'SBV'] else m_parent,
+                        'id':count,
+                        'parent': w if w_relate in ['ATT', 'SBV'] else w_child,  # 主语
+                        'child': w_child if w_relate in ['ATT', 'SBV'] else w,  # 谓语
                         'w_relate': w_relate
-                    })
+                    }
+                )
+                m_child = m_parent = None
+                for m in l:
+                    # 如果m和w并列，则添加(w_parent,m)
+                    if m['relate'] == 'COO' and m['parent'] == w['id']:
+                        m_parent = m
+                        dpPairSet[w_relate].append(
+                            {
+                                's_id': commId,
+                                'id': count,
+                                'parent': m if w_relate in ['ATT', 'SBV'] else w_child,
+                                'child': w_child if w_relate in ['ATT', 'SBV'] else w,
+                                'w_relate': w_relate
+                            })
+                    # 如果m和w_parent并列，则添加(m,w)
+                    if m['relate'] == 'COO' and m['parent'] == w['parent']:
+                        m_child = m
+                        dpPairSet[w_relate].append(
+                            {
+                                's_id': commId,
+                                'id': count,
+                                'parent': w if w_relate in ['ATT', 'SBV'] else m,
+                                'child': m if w_relate in ['ATT', 'SBV'] else w,
+                                'w_relate': w_relate
+                            })
+                if m_child and m_parent:
+                    dpPairSet[w_relate].append(
+                        {
+                            's_id': commId,
+                            'id': count,
+                            'parent': m_parent if w_relate in ['ATT', 'SBV'] else m_child,
+                            'child': m_child if w_relate in ['ATT', 'SBV'] else m_parent,
+                            'w_relate': w_relate
+                        })
     return dpPairSet
 
 
@@ -85,12 +92,12 @@ def extractAllDpPairSet():
 
     client = MongoClient()
     dp_pairs = client.get_database('jd').get_collection('jd_dp_pairs')
-    bufferSize = 10
+    bufferSize = 100
     allDpPairSet = {'SBV': [], 'VOB': [], 'ATT': [], 'CMP': []}
     try:
         db = client.get_database(dp_db_name)
         collection = db.get_collection(dp_coll_name)
-        cursor = collection.find().limit(101)
+        cursor = collection.find({'status':'SUCCESS'})
         while True:
             bufferSize -= 1
             print bufferSize
@@ -106,7 +113,7 @@ def extractAllDpPairSet():
             if bufferSize == 0:
                 print '开始插入'
                 map(lambda l: dp_pairs if not l else dp_pairs.insert_many(l), allDpPairSet.values())
-                bufferSize = 10  # 重设大小
+                bufferSize = 100  # 重设大小
                 allDpPairSet = {'SBV': [], 'VOB': [], 'ATT': [], 'CMP': []}  # 清空buffer
     finally:
         client.close()
@@ -114,8 +121,8 @@ def extractAllDpPairSet():
 
 
 if __name__ == '__main__':
-    parseComment2Dp()
-    #extractAllDpPairSet()
+    #parseComment2Dp()
+    extractAllDpPairSet()
     # Set = extractAllDpPairSet()
     # for c in Set.values():
     #     for item in c:

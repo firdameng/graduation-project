@@ -20,7 +20,7 @@ CELERY_IMPORTS = {
 CELERY_RESULT_BACKEND = 'mongodb://localhost:27017/'
 CELERY_MONGODB_BACKEND_SETTINGS = {
     'database':'jd',
-    'taskmeta_collection':'jd_comm_np'
+    'taskmeta_collection':'commentDps_3133811'
 }
 
 

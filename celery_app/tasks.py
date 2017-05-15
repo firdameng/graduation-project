@@ -10,16 +10,48 @@ import xml.etree.ElementTree as ET
 
 url_get_base = "http://127.0.0.1:12345/ltp"
 args = {
-    u'x': u'n',
-    u't': u'dp'
+    'x': 'n',
+    't': 'dp'
 }
+
 
 @app.task
 def error_handler(uuid):
     result = AsyncResult(uuid)
     exc = result.get(propagate=False)
     print('Task {0} raised exception: {1!r}\n{2!r}'.format(
-          uuid, exc, result.traceback))
+        uuid, exc, result.traceback))
+
+
+@app.task(bind=True, default_retry_delay=60, max_retries=10)
+def dp_comment(self, comment):
+    # 数据库评论是unicode啊,先utf-8编码
+    args['s'] = comment['content'].encode('utf-8')
+    # for k, v in args.items():
+    #     args[k] = v.encode('utf-8')
+    try:
+        xml_str = urllib.urlopen(url_get_base, urllib.urlencode(args)).read()  # POST method
+        if not xml_str or xml_str == '':
+            raise Exception('[response null] text: %s' % args['s'])
+        # 关联评论ID和依存句法分析对
+        cDpResult = []
+        for s in ET.fromstring(xml_str).iter('sent'):
+            cDpResult.append(
+                {
+                    'sId': int(s.attrib['id']),
+                    'sDpResult': map(lambda w: w.attrib, s.findall('word'))
+                }
+            )
+        # 正常pid应该为comment['productId']，celery当字符串存储到mongodb去了
+        return {
+            'pId': 3133811,
+            'cId': comment['_id'],
+            'cDpResult': cDpResult
+        }
+        # return  xml_str
+    except Exception as exc:
+        print args['s']
+        raise self.retry(exc=exc)  # 遵从默认重连参数
 
 
 @app.task(bind=True, default_retry_delay=60, max_retries=10)
@@ -34,11 +66,11 @@ def ltp_comment_np_xml(self, comment):
             raise Exception('[response null] text: %s' % utf8_args['s'])
 
         # 关联评论ID和依存句法分析对
-        jResult = {comment['_id']:[]}
+        jResult = {comment['_id']: []}
         for s in ET.fromstring(xml_str).iter('sent'):
-            jResult[comment['_id']].append(map(lambda w:w.attrib,s.findall('word')))
+            jResult[comment['_id']].append(map(lambda w: w.attrib, s.findall('word')))
         return jResult
-        #return  xml_str
+        # return  xml_str
     except Exception as exc:
         print utf8_args['s']
         raise self.retry(exc=exc)  # 遵从默认重连参数
