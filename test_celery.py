@@ -2,6 +2,7 @@
 import json
 import os
 import re
+from time import ctime, time
 
 import jieba
 from pymongo import MongoClient
@@ -775,33 +776,37 @@ def bulid_sentimeng_dict():
 
     #filter(lambda x : isChinese(x),sc.textFile(neg_access_path).take(20))
 
-def assess_word_degree(w,kvNegRdd,kvPosRdd,simiRdd,kvSimiRdd):
+def assess_word_degree(w,dicts):
 
     if not w:
         return 0
     w = w if isinstance(w,unicode) else w.decode('utf-8')
-    if kvNegRdd.lookup(w):      # lookup返回的是一个list
+    kvNegDict = dicts['kvNegDict']
+    kvPosDict = dicts['kvPosDict']
+    kvSimiDict = dicts['kvSimiDict']
+    simiDict = dicts['simiDict']
+    if w in kvNegDict:      # lookup返回的是一个list
         return -1
-    if kvPosRdd.lookup(w):
+    if w in kvPosDict:
         return 1
-    if kvSimiRdd.lookup(w):
-        real_key = kvSimiRdd.lookup(w)[0]
-        for v in simiRdd.lookup(real_key)[0]:
-            if kvNegRdd.lookup(v):
+    if w in kvSimiDict:
+        real_key = kvSimiDict[w]
+        for v in simiDict[real_key]:
+            if v in kvNegDict:
                 return -1
-            if kvPosRdd.lookup(v):
+            if v in kvPosDict:
                 return 1
     return 0
 
 
-def getCommentDegreeStatistics(cfsp,kvNegRdd,kvPosRdd,simiRdd,kvSimiRdd):
+def getCommentDegreeStatistics(cfsp,dicts):
     cDegValue = 0
     cDegrees = []
     for semt in cfsp['cEvalMulTuples']:
         sDegrees = []
         sDegValue = 0
         for semtp in semt['sEvalMulTuples']:
-            degree_sen = assess_word_degree(semtp['sentiment']['cont'],kvNegRdd,kvPosRdd,simiRdd,kvSimiRdd)
+            degree_sen = assess_word_degree(semtp['sentiment']['cont'],dicts)  #表明接受的可变参数列表的第一个
             degree_negadv = 1 if not semtp['negAdv'] else -1
             degValue = degree_sen * degree_negadv
             semtp['degValue'] =  degValue
@@ -824,6 +829,9 @@ def getCommentDegreeStatistics(cfsp,kvNegRdd,kvPosRdd,simiRdd,kvSimiRdd):
 
 
 def calculate_sentiment_degree():
+    def dict2row(d):
+        d['cDegrees'] = json.dumps(d['cDegrees'])
+        return Row(**d)
     ''''''
     app_name = '[APP] calculate_sentiment_degree'
     master_name = 'spark://caiwencheng-K53BE:7077'
@@ -831,66 +839,116 @@ def calculate_sentiment_degree():
     my_spark = SparkSession \
         .builder \
         .appName(app_name) \
+        .config("spark.mongodb.input.uri", "mongodb://127.0.0.1/jd.commentEvalMulTuples_3133811") \
+        .config("spark.mongodb.output.uri", "mongodb://127.0.0.1/jd.test_commentDegreeStatistics_3133811") \
         .master(master_name) \
         .getOrCreate()
     sc = my_spark.sparkContext
     #/home/caiwencheng/PycharmProjects/graduation-project
     # 构造词典kvRdd
     dictdir = os.path.join(os.path.curdir,'sentiment_dict')
-    kv_neg_rdd = sc.textFile(os.path.join(dictdir,'neg_dict')).map(lambda x : (x,True))
-    kv_neg_rdd.cache()   # 缓存在内存中
-    kv_pos_rdd = sc.textFile(os.path.join(dictdir, 'pos_dict')).map(lambda x: (x, True))
-    kv_pos_rdd.cache()
+
+    kv_neg_dict = sc.textFile(os.path.join(dictdir,'neg_dict')).map(lambda x : (x,True)).collectAsMap()
+
+    kv_pos_dict = sc.textFile(os.path.join(dictdir, 'pos_dict')).map(lambda x: (x, True)).collectAsMap()
+
     simirdd = sc.textFile(os.path.join(dictdir, 'similar_dict_utf8_converted.txt'))\
         .map(lambda x : (x.split(' ')[0] ,x.split(' ')[1:]))\
         .filter(lambda y : True if y[0].find(u'=') > -1 else False)
     simirdd.cache()
-    kv_simirdd = simirdd.flatMapValues(lambda x : x).map(lambda y : (y[1] ,y[0]))
-    kv_simirdd.cache()
 
-    # test_sentiment_words = [u'给力',u'高端',u'老',u'不够']
+    simi_dict = simirdd.collectAsMap()
+    kv_simi_dict = simirdd.flatMapValues(lambda x : x).map(lambda y : (y[1] ,y[0])).collectAsMap()
+
+
+    # 构造广播变量，字典（包括kv_neg_rdd，kv_pos_rdd，simirdd，kv_simirdd）
+    broadcast_value = {
+        'kvNegDict':kv_neg_dict,
+        'kvPosDict':kv_pos_dict,
+        'simiDict':simi_dict,
+        'kvSimiDict':kv_simi_dict
+    }
+    broadcast_dict = sc.broadcast(broadcast_value)
+
+    # 加载评价多元组数据
+    emt_df = my_spark.read.format("com.mongodb.spark.sql.DefaultSource").load()
+    emt_dict_rdd = emt_df.rdd.map(lambda y : y.asDict(recursive=True))
+    emt_dict_rdd.cache()
+
+    # 通过传递广播字典，对评价多元组进行情感计算
+    cds_json_rdd = emt_dict_rdd.map(lambda y : getCommentDegreeStatistics(y,broadcast_dict.value))
+    cds_json_rdd.cache()
+
+    # print cds_json_rdd.count()
     #
-    # for w in test_sentiment_words:
-    #     print w,assess_word_degree(w, kv_neg_rdd,kv_pos_rdd,simirdd,kv_simirdd)
-    #遍历评价多元组，逐条评论进行情感计算
-    client = MongoClient()
-    bufferSize = 100
-    try:
+    # degreeStatistics = cds_json_rdd.collect()
+    # # for i in degreeStatistics:
+    # #     print i
+    # for i in degreeStatistics:
+    #     for x in i['cDegrees']:
+    #         for y in x['sDegrees']:
+    #             print i['cId'], i['cDegValue'],x['sId'],\
+    #                 y['feature']['cont'],y['sentiment']['cont'], y['relate'], \
+    #                 y['negAdv']['cont'] if y['negAdv'] else None
 
-        emt_col = client.get_database('jd').get_collection('commentEvalMulTuples_3133811')
-        cds_col = client.get_database('jd').get_collection('commentDegreeStatistics_3133811')
-        bufferDegreeStatistics = []
-        cursor = emt_col.find()
-        while True:
+    DegreeStatisticsDF = my_spark.createDataFrame(cds_json_rdd.map(lambda x : dict2row(x)))
+    DegreeStatisticsDF.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite").save()
+    my_spark.stop()
 
-            try:
-                fsp = cursor.next()
-                bufferSize -= 1
-                print bufferSize
-                degreeStatistics = getCommentDegreeStatistics(fsp,kv_neg_rdd,kv_pos_rdd,simirdd,kv_simirdd)
-                for x in degreeStatistics['cDegrees']:
-                    for y in x['sDegrees']:
-                            print degreeStatistics['cId'], degreeStatistics['cDegValue'],x['sId'],\
-                                y['feature']['cont'],y['sentiment']['cont'], y['relate'], \
-                                y['negAdv']['cont'] if y['negAdv'] else None
-            except Exception as e:
-                # 遍历完了也要先写入数据库再退出
-                print e.message
-                if bufferDegreeStatistics:
-                    cds_col.insert_many(bufferDegreeStatistics)
-                print '遍历结束'
-                break
-            bufferDegreeStatistics.append(degreeStatistics)
-            if bufferSize == 0:
-                print '开始插入'
-                cds_col.insert_many(bufferDegreeStatistics)
-                bufferSize = 100  # 重设大小
-                bufferDegreeStatistics = []
-    finally:
-        client.close()
+
+def summary_comment_classfication():
+    ''''''
+    app_name = '[APP] summary_comment_classfication'
+    master_name = 'spark://caiwencheng-K53BE:7077'
+
+    my_spark = SparkSession \
+        .builder \
+        .appName(app_name) \
+        .config("spark.mongodb.input.uri", "mongodb://127.0.0.1/jd.test_commentDegreeStatistics_3133811") \
+        .config("spark.mongodb.output.uri", "mongodb://127.0.0.1/jd.productSummaryStatistics_3133811") \
+        .master(master_name) \
+        .getOrCreate()
+    cds_df = my_spark.read.format("com.mongodb.spark.sql.DefaultSource").load()
+
+    #剔除评论情感值为0的数据，保留极性值大于0或小于0的
+    valid_cds_rdd = cds_df.rdd.map(lambda y : y.asDict(recursive=True))\
+        .filter(lambda x : x['cDegValue'] != 0)\
+        .map(lambda z : (z['cId'],1 if z['cDegValue'] > 0 else -1))\
+        .sortBy(lambda x: x[0])
+    valid_cds_rdd.cache()
+
+    # 建立有效情感评论集的k,v字典，作为广播变量用于过滤原始评论
+    valid_cds_map = valid_cds_rdd.collectAsMap()
+    broadcast_cds_map = my_spark.sparkContext.broadcast(valid_cds_map)
+
+    # 加载原始评论，根据有效情感评论集，得到和有效情感评论相同的原始精简k,v评论集
+    ori_comm_df = my_spark.read.format("com.mongodb.spark.sql.DefaultSource").option(
+        "uri","mongodb://127.0.0.1/jd.productId_3133811").load()
+    ori_valid_comm_rdd = ori_comm_df.rdd.map(lambda y : y.asDict(recursive=True)).\
+        filter(lambda x : x['_id'] in broadcast_cds_map.value ).\
+        map(lambda z : (z['_id'],1 if z['score'] > 3 else -1)).\
+        sortBy(lambda x: x[0])
+    ori_valid_comm_rdd.cache()
+    # 计算精确率(正向而言)
+    tp = ori_valid_comm_rdd.map(lambda x:x[1]).\
+        zip(valid_cds_rdd.map(lambda y:y[1])).\
+        filter(lambda z : z[0] == z[1] and z[0] > 0).\
+        count()
+    classified_true = valid_cds_rdd.filter(lambda x : x[1] > 0).count()
+    actually_true = ori_valid_comm_rdd.filter(lambda x : x[1] > 0).count()
+
+    print '精确率 P',tp/float(classified_true)
+    print '召回率 R',tp/float(actually_true)
+
 if __name__ == '__main__':
     #parse_all_comm_dp_pair()
    # extract_all_evalMulTuple1()
-    calculate_sentiment_degree()
+
     #bulid_sentimeng_dict()
+    # print 'start:%s' % ctime()
+    # s = time()
+    # calculate_sentiment_degree()
+    # print 'end:%s' % ctime()
+    # print  'cost:', time() - s
+    summary_comment_classfication()
     pass

@@ -1,6 +1,7 @@
 # coding=utf-8
 
 # celery_app 有了__init__.py这个文件就成了模块了
+import ast
 import json
 import urllib
 
@@ -14,13 +15,28 @@ args = {
     't': 'dp'
 }
 
+@app.task(bind=True, default_retry_delay=60, max_retries=10)
+def download_comments(self, url,downloader):
 
-@app.task
-def error_handler(uuid):
-    result = AsyncResult(uuid)
-    exc = result.get(propagate=False)
-    print('Task {0} raised exception: {1!r}\n{2!r}'.format(
-        uuid, exc, result.traceback))
+    # 按页将评论存储起来了，还需要进一步净化按指定格式存储
+    try:
+        data, code = downloader(url)
+        if data:
+            dictStr = data[data.find('(') + 1:-2]
+            astDictStr = dictStr.replace("true", "True").replace("false", "False").replace("null", "None")
+            dictResult = ast.literal_eval(astDictStr)
+            oriComments = dictResult["comments"]
+
+            # 精处理我们所需信息，提取 content,score
+            comments = []
+            for com in oriComments:
+                comment = {}
+                comment["content"] = com["content"].decode("GBK").replace(u'\n',u'。')
+                comment["score"] = com["score"]
+                comments.append(comment)
+            return comments
+    except Exception as exc:
+        raise self.retry(exc=exc)  # 遵从默认重连参数
 
 
 @app.task(bind=True, default_retry_delay=60, max_retries=10)
