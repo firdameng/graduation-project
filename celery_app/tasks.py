@@ -5,9 +5,12 @@ import ast
 import json
 import urllib
 
+import mongo_cache
 from celery_app import app
 from celery.result import AsyncResult
 import xml.etree.ElementTree as ET
+
+from downloader import Downloader
 
 url_get_base = "http://127.0.0.1:12345/ltp"
 args = {
@@ -16,25 +19,29 @@ args = {
 }
 
 @app.task(bind=True, default_retry_delay=60, max_retries=10)
-def download_comments(self, url,downloader):
+def download_comments(self, url):
 
     # 按页将评论存储起来了，还需要进一步净化按指定格式存储
+    downloader = Downloader(cache=mongo_cache.MongoCache())
     try:
         data, code = downloader(url)
-        if data:
-            dictStr = data[data.find('(') + 1:-2]
-            astDictStr = dictStr.replace("true", "True").replace("false", "False").replace("null", "None")
-            dictResult = ast.literal_eval(astDictStr)
-            oriComments = dictResult["comments"]
+        if not data:
+            raise Exception('抓取结果为空')
 
-            # 精处理我们所需信息，提取 content,score
-            comments = []
-            for com in oriComments:
-                comment = {}
-                comment["content"] = com["content"].decode("GBK").replace(u'\n',u'。')
-                comment["score"] = com["score"]
-                comments.append(comment)
-            return comments
+        dictStr = data[data.find('(') + 1:-2]
+        astDictStr = dictStr.replace("true", "True").replace("false", "False").replace("null", "None")
+        dictResult = ast.literal_eval(astDictStr)
+        oriComments = dictResult["comments"]
+        # 精处理我们所需信息，提取 content,score
+        comments = []
+        for com in oriComments:
+            comments.append(
+                 {
+                      'content':com["content"].decode("GBK").replace(u'\n',u'。'),
+                      'score':com["score"]
+                 }
+              )
+        return comments
     except Exception as exc:
         raise self.retry(exc=exc)  # 遵从默认重连参数
 

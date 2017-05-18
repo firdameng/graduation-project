@@ -76,7 +76,7 @@ def task(base_url, start, stop, client,collectionName):
     print start,stop
     downloader = Downloader(cache=mongo_cache.MongoCache())
     for i in range(start/PAGE_SIZE, stop/PAGE_SIZE):
-        new_url = set_query_parameter(base_url, PAGE_NAME, i)
+        new_url = base_url.replace('$',str(i))      # 替换page值即可
         #print new_url
         data =''
         stime = 30
@@ -94,18 +94,30 @@ def task(base_url, start, stop, client,collectionName):
 
 
 def main():
+    # base_url = 'http://club.jd.com/comment/skuProductPageComments.action?' \
+    #            'callback=fetchJSON_comment98vv49564&productId=4297772&score=0&sortType=5&' \
+    #            'page=0&pageSize=10&isShadowSku=0'
+    # jd_col_name = base_url.split('&')[1].replace('=','_')
+
+    # 构建下载url
+    product_id = 4297772
+    cback = 'fetchJSON_comment98vv49564'
+
     base_url = 'http://club.jd.com/comment/skuProductPageComments.action?' \
-               'callback=fetchJSON_comment98vv75201&productId=3133811&score=0&sortType=5&' \
-               'page=0&pageSize=10&isShadowSku=0'
-    jd_col_name = base_url.split('&')[1].replace('=','_')
-    comm_sum = 20000
+               'callback=@&productId=#&score=0&sortType=5&' \
+               'page=$&pageSize=10&isShadowSku=0'.replace('@',cback).replace('#',str(product_id))
+
+    # 分配多线程任务
+    maxsize = 20000
     thread_sum = 20
-    comments_one_thread = comm_sum / thread_sum
+    comments_one_thread = maxsize / thread_sum
     threads = []
 
     # 创建或者获取jd集合
     jd_client = MongoClient()
     jd_db = jd_client.get_database(DATABASE_NAME)
+
+    jd_col_name = 'product_'+str(product_id)
     # 创建或这获取counter集合,并初始化商品集合的计数为0
     jd_col_counters = jd_db.get_collection('counters')
     jd_col_counters.insert_one(
