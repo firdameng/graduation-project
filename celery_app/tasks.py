@@ -45,13 +45,41 @@ def download_comments(self, url):
     except Exception as exc:
         raise self.retry(exc=exc)  # 遵从默认重连参数
 
-
 @app.task(bind=True, default_retry_delay=60, max_retries=10)
 def dp_comment(self, comment):
     # 数据库评论是unicode啊,先utf-8编码
+
+    #--------------------暂时comment 洛基亚，其他已改正------------------
+    args['s'] = comment['comment'].encode('utf-8')
+    try:
+        xml_str = urllib.urlopen(url_get_base, urllib.urlencode(args)).read()  # POST method
+        if not xml_str or xml_str == '':
+            raise Exception('[response null] text: %s' % args['s'])
+        # 关联评论ID和依存句法分析对
+        cDpResult = []
+        for s in ET.fromstring(xml_str).iter('sent'):
+            cDpResult.append(
+                {
+                    'sId': int(s.attrib['id']),
+                    'sDpResult': map(lambda w: w.attrib, s.findall('word'))
+                }
+            )
+        # 正常pid应该为comment['productId']，celery当字符串存储到mongodb去了
+        return {
+            'pId': comment['pId'],
+            'cId': comment['cId'],
+            'cDpResult': cDpResult
+        }
+        # return  xml_str
+    except Exception as exc:
+        print args['s']
+        raise self.retry(exc=exc)  # 遵从默认重连参数
+
+
+@app.task(bind=True, default_retry_delay=60, max_retries=10)
+def dp_comment1(self, comment):
+    # 数据库评论是unicode啊,先utf-8编码
     args['s'] = comment['content'].encode('utf-8')
-    # for k, v in args.items():
-    #     args[k] = v.encode('utf-8')
     try:
         xml_str = urllib.urlopen(url_get_base, urllib.urlencode(args)).read()  # POST method
         if not xml_str or xml_str == '':

@@ -20,7 +20,7 @@ CELERY_IMPORTS = {
 CELERY_RESULT_BACKEND = 'mongodb://localhost:27017/'
 CELERY_MONGODB_BACKEND_SETTINGS = {
     'database':'jd',
-    'taskmeta_collection':'pro_product_4297772'
+    'taskmeta_collection':'comments_dp_4297772'    # raw_comments会用到一次
 }
 
 

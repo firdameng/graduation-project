@@ -233,7 +233,7 @@ def inFeedFeatureSet(featureWord):
 
 
 def inTempFeatureWordSet(featureWord):
-    result = True if featureWord in TempFeatureWordSet else False
+    result = True if featureWord in temp_feature_word_dict else False
     return result
 
 
@@ -241,14 +241,14 @@ FeatureWordSet = list()  # 最终的特征词集合
 SentimentWordSet = list()  # 最终的情感词集合
 FeaSenPairSet = list()  # 最终的特征情感对集合
 
-TempFeatureWordSet = dict()
-TempSentimentWordSet = dict()
+temp_feature_word_dict = dict()
+temp_sentiment_word_dict = dict()
 
 
 def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
     global FeatureWordSet
-    global TempFeatureWordSet
-    global TempSentimentWordSet
+    global temp_feature_word_dict
+    global temp_sentiment_word_dict
     global FeaSenPairSet
 
     dpPair = json.loads(dpPairStr) if isinstance(dpPairStr, unicode) else dpPairStr
@@ -287,8 +287,8 @@ def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
 
 
 def extract_feature(dpPairStr):
-    global TempFeatureWordSet
-    global TempSentimentWordSet
+    global temp_feature_word_dict
+    global temp_sentiment_word_dict
     global FeaSenPairSet
 
     dpPair = json.loads(dpPairStr) if isinstance(dpPairStr, unicode) else dpPairStr
@@ -445,17 +445,17 @@ def parse_all_comm_dp_pair():
     df = my_spark.read.format("com.mongodb.spark.sql.DefaultSource").load()
     marked_comm_dp = df.toJSON().map(lambda x: add_deleted_field(x)).collect()
     dataset = iter_dataset(marked_comm_dp, extract_sentiment, inFeedFeatureSet, 0)
-    old_len = len(TempFeatureWordSet) + len(TempSentimentWordSet)
+    old_len = len(temp_feature_word_dict) + len(temp_sentiment_word_dict)
     print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}' \
-        .format(len(TempFeatureWordSet), len(TempSentimentWordSet), len(FeaSenPairSet))
+        .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet))
     while True:
         dataset = iter_dataset(dataset, extract_feature)
         print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}' \
-            .format(len(TempFeatureWordSet), len(TempSentimentWordSet), len(FeaSenPairSet))
+            .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet))
         dataset = iter_dataset(dataset, extract_sentiment, inTempFeatureWordSet, 1)
         print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}' \
-            .format(len(TempFeatureWordSet), len(TempSentimentWordSet), len(FeaSenPairSet))
-        cur_len = len(TempFeatureWordSet) + len(TempSentimentWordSet)
+            .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet))
+        cur_len = len(temp_feature_word_dict) + len(temp_sentiment_word_dict)
         print ('precount:%d,currcount:%d') % (old_len, cur_len)
         if cur_len != old_len:
             old_len = cur_len

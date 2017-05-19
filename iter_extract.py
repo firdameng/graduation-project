@@ -68,20 +68,20 @@ FeatureWordSet = list()  # 最终的特征词集合
 SentimentWordSet = list()  # 最终的情感词集合
 FeaSenPairSet = list()  # 最终的特征情感对集合
 
-TempFeatureWordSet = dict()
-TempSentimentWordSet = dict()
+temp_feature_word_dict = dict()
+temp_sentiment_word_dict = dict()
 
 
 def inTempFeatureWordSet(featureWord):
     #stafeatureWord = featureWord if isinstance(featureWord, unicode) else featureWord.decode('utf-8')
-    result =True if featureWord in TempFeatureWordSet else False
+    result =True if featureWord in temp_feature_word_dict else False
     #print '候选特征判断',featureWord,result
     return result
 
 def extractSentiment(dpPairStr, senti_judge_fuction, *args):
     global FeatureWordSet
-    global TempFeatureWordSet
-    global TempSentimentWordSet
+    global temp_feature_word_dict
+    global temp_sentiment_word_dict
     global FeaSenPairSet
 
     # 加载四种依存关系对为json串
@@ -132,8 +132,8 @@ def extractSentiment(dpPairStr, senti_judge_fuction, *args):
 
 
 def extractFeature(dpPairStr):
-    global TempFeatureWordSet
-    global TempSentimentWordSet
+    global temp_feature_word_dict
+    global temp_sentiment_word_dict
     global FeaSenPairSet
 
     # 加载四种依存关系对为json串
@@ -206,16 +206,16 @@ if __name__ == '__main__':
     remainOriDisData = filter(lambda dpPair: extractSentiment(dpPair, inFeedFeatureSet, 0),oriDisDataList)
     preCount = len(remainOriDisData)
     print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}，剩余依存对数：{3}'\
-        .format(len(TempFeatureWordSet),len(TempSentimentWordSet),len(FeaSenPairSet),preCount)
+        .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet), preCount)
     print preCount  #233,93(100,0)
     while True:
         remainOriDisData = filter(lambda dpPair: extractFeature(dpPair),remainOriDisData)
         print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}，剩余依存对数：{3}' \
-            .format(len(TempFeatureWordSet), len(TempSentimentWordSet), len(FeaSenPairSet), len(remainOriDisData))
+            .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet), len(remainOriDisData))
         remainOriDisData = filter(lambda dpPair: extractSentiment(dpPair, inTempFeatureWordSet,1),remainOriDisData)
         currCount = len(remainOriDisData) #220
         print '候选特征数：{0}，候选情感词数：{1}，特征情感词数：{2}，剩余依存对数：{3}' \
-            .format(len(TempFeatureWordSet), len(TempSentimentWordSet), len(FeaSenPairSet), currCount)
+            .format(len(temp_feature_word_dict), len(temp_sentiment_word_dict), len(FeaSenPairSet), currCount)
         print ('precount:%d,currcount:%d')%(preCount,currCount)
         if currCount != preCount:  # 如果剩余依存对数量不再改变，则迭代完成
             preCount = currCount

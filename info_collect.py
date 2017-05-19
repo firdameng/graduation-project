@@ -41,7 +41,7 @@ def format_comments(spark, product_id, database, raw_collection, formatted_colle
 
     data_key_rdd = spark.sparkContext.parallelize(range(0, datacount)).repartition(2)
     formatted_data_rdd = data_key_rdd.zip(data_value_rdd). \
-        map(lambda x: {'pId': product_id, 'cId': x[0], 'comment': x[1]['content'], 'score': x[1]['score']})
+        map(lambda x: {'pId': product_id, 'cId': x[0], 'content': x[1]['content'], 'score': x[1]['score']})
 
     formatted_data_df = spark.createDataFrame(formatted_data_rdd.map(lambda x: Row(**x)))
     formatted_data_df.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite"). \
@@ -73,8 +73,8 @@ def pre_process_comments(spark, database, formatted_collection,purged_collection
         load()
 
     purged_comments_rdd = noise_comments_df.rdd.map(lambda y: y.asDict(recursive=True)). \
-        filter(lambda x: valid_element(x['comment']) and valid_similarity(x['comment'])
-                         and valid_length(x['comment']) and not include_url(x['comment']))
+        filter(lambda x: valid_element(x['content']) and valid_similarity(x['content'])
+                         and valid_length(x['content']) and not include_url(x['content']))
 
     purged_comments_df = spark.createDataFrame(purged_comments_rdd.map(lambda x: Row(**x)))
     purged_comments_df.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite"). \
