@@ -50,7 +50,7 @@ def dp_comment(self, comment):
     # 数据库评论是unicode啊,先utf-8编码
 
     #--------------------暂时comment 洛基亚，其他已改正------------------
-    args['s'] = comment['comment'].encode('utf-8')
+    args['s'] = comment['content'].encode('utf-8')
     try:
         xml_str = urllib.urlopen(url_get_base, urllib.urlencode(args)).read()  # POST method
         if not xml_str or xml_str == '':

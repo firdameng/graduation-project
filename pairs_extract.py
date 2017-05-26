@@ -26,12 +26,12 @@ def dp_comments(database, product_id, purged_comments_collection):
     # print celery_app.app.conf.CELERY_MONGODB_BACKEND_SETTINGS
     try:
         collection = client.get_database(database).get_collection(purged_comments_collection)
-        cursor = collection.find({'pId': product_id})
+        cursor = collection.find().limit(100)
         i = 0
         for c in cursor:
             i += 1
+            print i
             tasks.dp_comment.delay(c)
-        print i
     finally:
         client.close()
 
@@ -45,7 +45,8 @@ def format_dp_comments(spark, database, dp_collection, formatted_dp_collection):
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", dp_collection). \
         load()
 
-    formatted_dp_rdd = dp_df.rdd.map(lambda y: y.asDict(recursive=True)).\
+    formatted_dp_rdd = dp_df.rdd.map(lambda y: y.asDict(recursive=True)). \
+        filter(lambda x: x['status'] == 'SUCCESS').\
         map(lambda x: json.loads(x['result']))
 
     formatted_dp_df = spark.createDataFrame(formatted_dp_rdd.map(lambda x: dict2row(x)))
@@ -150,6 +151,7 @@ def extract_comments_dp_pairs(spark, database, formatted_dp_collection,dp_paris_
 feature_word_dict = {}
 temp_feature_word_dict = {}
 temp_sentiment_word_dict = {}
+# feed_sentiment_words = {}
 
 def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
     global feature_word_dict
@@ -168,7 +170,6 @@ def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
                 featureWord in feature_word_dict else 1
         else:
             temp_feature_word_dict[featureWord] += 1
-        print 'len(temp_feature_word_dict)', len(temp_feature_word_dict)
         sentiment = dpPair['first'] if relate == 'ATT' else dpPair['second']
         sentimentWord = sentiment['cont'] if isinstance(sentiment['cont'],unicode) else sentiment['cont'].decode('utf-8')
         if len(sentimentWord) < 1 or len(sentimentWord) > 3:
@@ -176,9 +177,6 @@ def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
         if sentiment['pos'] == 'a':
             temp_sentiment_word_dict[sentimentWord] = temp_sentiment_word_dict[sentimentWord] + 1 if \
                 sentimentWord in temp_sentiment_word_dict else 1
-
-            print 'len(temp_sentiment_word_dict)', len(temp_sentiment_word_dict)
-            print featureWord, sentimentWord,relate
             return -1
         return 1
     return 0
@@ -200,7 +198,6 @@ def extract_feature(dpPairStr):
     # 满足情感词长度要求但不在候选特征情感集合中，标记为待定 0
     if  sentimentWord in temp_sentiment_word_dict:
         temp_sentiment_word_dict[sentimentWord] += 1
-        print 'len(temp_sentiment_word_dict)', len(temp_sentiment_word_dict)
         feature = dpPair['second'] if relate == 'ATT' else dpPair['first']
         featureWord = feature['cont'] if isinstance(feature['cont'],unicode) else feature['cont'].decode('utf-8')
         # 特征词不满足要求直接标记删除
@@ -210,8 +207,6 @@ def extract_feature(dpPairStr):
         if feature['pos'] in ['n', 'v']:
             temp_feature_word_dict[featureWord] = temp_feature_word_dict[featureWord] + 1 if \
                 featureWord in temp_feature_word_dict else 1
-            print 'len(temp_feature_word_dict)', len(temp_feature_word_dict)
-            print featureWord, sentimentWord,relate
             return -1
         return 1
     return 0
@@ -251,6 +246,7 @@ def extract_fea_sen_pairs(spark,database,dp_pairs_collection,fea_sen_pairs_colle
     global feature_word_dict
     global temp_feature_word_dict
     global temp_sentiment_word_dict
+    # global feed_sentiment_words
     def inFeedFeatureSet(featureWord):
         unicode_feature_word = featureWord if isinstance(featureWord, unicode) else featureWord.decode('utf-8')
         return False if not RE.search(unicode_feature_word) else True
@@ -258,6 +254,11 @@ def extract_fea_sen_pairs(spark,database,dp_pairs_collection,fea_sen_pairs_colle
     def inTempFeatureWordSet(featureWord):
         return True if featureWord in temp_feature_word_dict else False
 
+    # def inFeedSentimentSet(sentimentWord):
+    #     return True if sentimentWord in feed_sentiment_words else False
+    #
+    # def inTempSentimentWordSet(sentimentWord):
+    #     return True if sentimentWord in temp_sentiment_word_dict else False
 
     def include_fsp(c_temp_fea_sen_result):
         # 过滤掉不包含特征情感对的评论
@@ -320,6 +321,9 @@ def extract_fea_sen_pairs(spark,database,dp_pairs_collection,fea_sen_pairs_colle
     dp_pairs_df = spark.read.format("com.mongodb.spark.sql.DefaultSource"). \
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", dp_pairs_collection). \
         load()
+
+    # 构造情感种子词典  很难归纳出种子词典啊
+
     # 添加删除域为迭代做铺垫
     marked_dp_pairs = dp_pairs_df.toJSON().map(lambda x: add_deleted_field(x)).collect()
 
@@ -350,7 +354,7 @@ def extract_fea_sen_pairs(spark,database,dp_pairs_collection,fea_sen_pairs_colle
             break
 
     # 提取带特征情感词的依存句法对，并写入fea_sen_pairs_collection          map(lambda y:purge_fea_sen_pair(y)).\
-    marked_dp_pairs_rdd = my_spark.sparkContext.parallelize(marked_dp_pairs)
+    marked_dp_pairs_rdd = spark.sparkContext.parallelize(marked_dp_pairs)
     row_fsp_rdd = marked_dp_pairs_rdd.filter(lambda x: include_fsp(x)).\
         map(lambda x: filter_fea_sen_pair(x)). \
         map(lambda z: dict2row(z))
@@ -375,22 +379,24 @@ def extract_fea_sen_pairs(spark,database,dp_pairs_collection,fea_sen_pairs_colle
         option("collection", 'sentiment_word_%d' % product_id).save()
 
 if __name__ == '__main__':
-    product_id = 4297772
+    product_id = 3899582    #4297772
     database = 'jd'
-    purged_comments_collection = 'purged_comments'
+    purged_comments_collection = 'purged_comments_%d'%product_id
+    temp_dp_collection = 'temp_comments_dp_%d' % product_id
 
-    app_name = 'caiwencheng'
-    master_name = 'spark://caiwencheng-K53BE:7077'
-    my_spark = SparkSession \
-        .builder \
-        .appName(app_name) \
-         .master(master_name) \
-        .getOrCreate()
-    #dp_comments(database, product_id, purged_comments_collection)
-    dp_collection = 'comments_dp_%d'%product_id
-    formatted_dp_collection = 'formatted_comments_dp_%d'%product_id
-    dp_pairs_collection = 'comments_dp_pairs_%d'%product_id
-    fea_sen_pairs_collection = 'fea_sen_pairs_%d'%product_id
-    #format_dp_comments(my_spark,database,dp_collection,formatted_dp_collection)
-    #extract_comments_dp_pairs(my_spark,database,formatted_dp_collection,dp_pairs_collection)
-    extract_fea_sen_pairs(my_spark,database,dp_pairs_collection,fea_sen_pairs_collection)
+    # ---------------修改celery的bakend值---------------------
+    dp_comments(database, product_id, purged_comments_collection)
+
+    # app_name = 'caiwencheng'
+    # master_name = 'spark://caiwencheng-K53BE:7077'
+    # my_spark = SparkSession \
+    #     .builder \
+    #     .appName(app_name) \
+    #     .master(master_name) \
+    #     .getOrCreate()
+    # comments_dp_collection = 'comments_dp_%d'%product_id
+    # dp_pairs_collection = 'comments_dp_pairs_%d'%product_id
+    # fea_sen_pairs_collection = 'fea_sen_pairs_%d'%product_id
+    #format_dp_comments(my_spark,database,temp_dp_collection,comments_dp_collection)
+    #extract_comments_dp_pairs(my_spark,database,comments_dp_collection,dp_pairs_collection)
+    #extract_fea_sen_pairs(my_spark,database,dp_pairs_collection,fea_sen_pairs_collection)

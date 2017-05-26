@@ -6,6 +6,7 @@ import json
 import jieba
 import re
 from pyspark import Row
+from pyspark.sql import SparkSession
 
 from celery_app import tasks
 
@@ -17,10 +18,11 @@ def crawl_pruduct_comments(id, cback, maxsize):
     :param cback: @ 如fetchJSON_comment98vv49564,fetchJSON_comment98vv75201(对应上)
     :return: 
     '''
-    base_url = 'http://club.jd.com/comment/skuProductPageComments.action?' \
+    base_url = 'https://club.jd.com/comment/skuProductPageComments.action?' \
                'callback=@&productId=#&score=0&sortType=5&' \
                'page=$&pageSize=10&isShadowSku=0'.replace('@', cback).replace('#', str(id))
     for i in range(maxsize / 10):
+        print base_url.replace('$', str(i))
         tasks.download_comments.delay(base_url.replace('$', str(i)))
 
 
@@ -80,3 +82,40 @@ def pre_process_comments(spark, database, formatted_collection,purged_collection
     purged_comments_df.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite"). \
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", purged_collection). \
         save()
+
+
+if __name__ == '__main__':
+
+
+    '''
+    vivo x9,  1.1万， 11126974481，fetchJSON_comment98vv15138
+    oppo R9s, 4.6万， 3899582，    fetchJSON_comment98vv54010  4.1万
+    荣耀8，    6.1万， 2967927，    fetchJSON_comment98vv64799
+    iphone7s, 9000+,  3995645,    fetchJSON_comment98vv12276
+    
+    '''
+    product_id = 3899582
+    cback = 'fetchJSON_comment98vv54010'
+    maxsize = 41000
+
+    database = 'jd'
+    raw_comments_collection = 'raw_comments_%d'%product_id
+
+    # ******************修改celeryconfig backend*************************
+    #crawl_pruduct_comments(product_id, cback, maxsize)
+
+    app_name = 'info_collect'
+    master_name = 'spark://caiwencheng-K53BE:7077'
+    my_spark = SparkSession \
+        .builder \
+        .appName(app_name) \
+         .master(master_name) \
+        .getOrCreate()
+    # 有一定的时间间隔，等异步任务执行完
+    formatted_comments_collection = 'formatted_comments_%d'%product_id
+    #format_comments(my_spark,product_id,database,raw_comments_collection,formatted_comments_collection)
+
+    purged_comments_collection = 'purged_comments_%d'%product_id
+    pre_process_comments(my_spark,database,formatted_comments_collection,purged_comments_collection)
+
+    pass

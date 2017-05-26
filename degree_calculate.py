@@ -79,7 +79,7 @@ def get_evalMulTuples(cFeaSen, cDpResult):
         'cEvalMulTuples': c_eval_mul_tuples
     }
 
-def extract_all_evalMulTuple1(database,dp_collection,fea_sen_pairs_collection,eval_mul_tuples_collection):
+def extract_all_evalMulTuple(database,dp_collection,fea_sen_pairs_collection,eval_mul_tuples_collection):
 
     def get_dp_result(cId,commDpCollection):
         commdp = commDpCollection.find_one({'cId':cId})
@@ -225,6 +225,8 @@ def getCommentDegreeStatistics(cfsp,dicts):
         sDegValue = 0
         for semtp in semt['sEvalMulTuples']:
             degree_sen = assess_word_degree(semtp['sentiment']['cont'],dicts)  #表明接受的可变参数列表的第一个
+            # if degree_sen == 0 :    #即如果存在未登录情感词，则抛弃
+            #     continue
             degree_negadv = 1 if not semtp['negAdv'] else -1
             degValue = degree_sen * degree_negadv
             semtp['degValue'] =  degValue
@@ -233,7 +235,7 @@ def getCommentDegreeStatistics(cfsp,dicts):
         cDegrees.append(
             {
                 'sId':semt['sId'],
-                'sDegValue':sDegValue,
+                #'sDegValue':sDegValue/float(len(sDegrees)),
                 'sDegrees':sDegrees
             }
         )
@@ -241,7 +243,7 @@ def getCommentDegreeStatistics(cfsp,dicts):
     return {
         'pId':cfsp['pId'],
         'cId':cfsp['cId'],
-        'cDegValue':cDegValue,
+        'cDegValue':cDegValue/float(reduce(lambda a,b:a+b,map(lambda x :len(x['sDegrees']),cDegrees))),
         'cDegrees':cDegrees
     }
 
@@ -304,12 +306,12 @@ def calculate_sentiment_degree(spark,database,eval_mul_tuple_collection,comments
 
 
 if __name__ == '__main__':
-    product_id = 4297772
+    product_id = 3899582  #4297772
     database = 'jd'
-    dp_collection = 'formatted_comments_dp_4297772'
-    fea_sen_pairs_collection= 'fea_sen_pairs_4297772'
+    dp_collection = 'comments_dp_%d'%product_id
+    fea_sen_pairs_collection= 'fea_sen_pairs_%d'%product_id
     eval_mul_tuples_collection = 'eval_mul_tuples_%d'%product_id
-    #extract_all_evalMulTuple1(database,dp_collection,fea_sen_pairs_collection,eval_mul_tuples_collection)
+    #extract_all_evalMulTuple(database,dp_collection,fea_sen_pairs_collection,eval_mul_tuples_collection)
     #bulid_sentimeng_dict()
 
     app_name = '[APP] bulid_sentimeng_dict'
@@ -322,10 +324,10 @@ if __name__ == '__main__':
         .getOrCreate()
 
     comments_degree_collection = 'comments_degree_%d'%product_id
-    #calculate_sentiment_degree(spark, database, eval_mul_tuples_collection, comments_degree_collection)
-
-    product_summary_collection = 'product_summary_%d'%product_id
-    purged_comments_collection = 'purged_comments'
+    calculate_sentiment_degree(spark, database, eval_mul_tuples_collection, comments_degree_collection)
+    #
+    # product_summary_collection = 'product_summary_%d'%product_id
+    # purged_comments_collection = 'purged_comments'
     # summary_comment_classfication(spark,database,comments_degree_collection,purged_comments_collection,
     #                               product_summary_collection)
     pass
