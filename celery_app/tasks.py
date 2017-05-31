@@ -60,7 +60,7 @@ def dp_comment(self, comment):
         for s in ET.fromstring(xml_str).iter('sent'):
             cDpResult.append(
                 {
-                    'sId': int(s.attrib['id']),
+                    'sId': int(s.attrib['id']),      # 0 这里用字符串表示,主要是df schema模式问题，
                     'sDpResult': map(lambda w: w.attrib, s.findall('word'))
                 }
             )

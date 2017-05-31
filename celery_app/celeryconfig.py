@@ -22,6 +22,7 @@ CELERY_MONGODB_BACKEND_SETTINGS = {
     'database':'jd',
     #'taskmeta_collection':'raw_comments_3899582'    # raw_comments会用到一次purged_comments_
     #'taskmeta_collection':'temp_comments_dp_3899582'
+    'taskmeta_collection':'temp_comments_dp_4297772'
 }
 
 

@@ -109,7 +109,8 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
 
             for deg in cursor:
 
-                senti_word = deg['sentiment']['cont']
+                senti_word = deg['sentiment']['cont'] if not deg['negAdv'] else \
+                    deg['negAdv']['cont'] + deg['sentiment']['cont']
                 related_degrees.append(deg['cId'])
 
                 if deg['degValue'] > 0 :
@@ -164,18 +165,29 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
     #     temp.append(get_hot_tag_statistics(t,database,temp_degrees_collection))
 
     # 起码的基准是好/差评率0.75，评论数满足正向特征的评论起码大于100，负向特征评论起码大于10
-    tag_ori_statistics = features_rdd.map(
+    ori_tag_statistics = features_rdd.map(
         lambda x : get_hot_tag_statistics(x,database,temp_degrees_collection)).collect()
 
-    tag_purged_statistics = filter(
-        lambda z : (z['tIsPos'] and z['tCount'] > 100) or (not z['tIsPos'] and z['tCount'] > 2),
-        filter(lambda y : y['tRate'] > 0.75,
-               filter(lambda x : len(x) > 0,tag_ori_statistics)))
+    # tag_purged_statistics = filter(
+    #     lambda z : (z['tIsPos'] and z['tCount'] > 100 and z['tRate'] > 0.75) or
+    #                (not z['tIsPos'] and z['tCount'] > 2 and z['tRate'] > 0.6),
+    #            filter(lambda x : len(x) > 0,ori_tag_statistics))
+    # tag_purged_statistics = filter(lambda x: len(x) > 0, ori_tag_statistics)
+
+    pos_tag_statistics = filter(lambda x: len(x) > 0 and x['tIsPos'], ori_tag_statistics)
+    neg_tag_statistics = filter(lambda x: len(x) > 0 and not x['tIsPos'], ori_tag_statistics)
+
+    pos_tag_mean_count = reduce(lambda x,y : x + y,map(lambda x : x['tCount'],pos_tag_statistics)) / \
+                         len(pos_tag_statistics)
+    neg_tag_mean_count = reduce(lambda x, y: x + y, map(lambda x: x['tCount'], neg_tag_statistics)) / \
+                         len(neg_tag_statistics)
 
     hot_pos_tag_statistics =sorted(
-        filter(lambda x : x['tIsPos'],tag_purged_statistics),key = lambda x : x['tRate'],reverse = True)[:100]
+        filter(lambda x : x['tCount'] > pos_tag_mean_count,pos_tag_statistics),
+        key = lambda x : x['tRate'],reverse = True)[:100]
     hot_neg_tag_statistics = sorted(
-        filter(lambda x: not x['tIsPos'], tag_purged_statistics), key=lambda x: x['tRate'], reverse=True)[:100]
+        filter(lambda x: x['tCount'] > neg_tag_mean_count, neg_tag_statistics),
+        key=lambda x: x['tRate'], reverse=True)[:100]
 
     # 打印测试一下
     for i in hot_pos_tag_statistics:
@@ -183,7 +195,7 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
             format(i['tFeature'],i['tSentiment'],i['tRate'],i['tCount'],i['tIsPos'],i['tGoodComment'][:10],
                    i['tBadComment'][:10])
     for i in hot_neg_tag_statistics:
-        print u'热门标签：{0}{1},好评率：{2},总次数：{3},倾向：{4}\n正向评论有：{5}\n负向评论有：{6}'.\
+        print u'热门标签：{0}{1},差评率：{2},总次数：{3},倾向：{4}\n正向评论有：{5}\n负向评论有：{6}'.\
             format(i['tFeature'], i['tSentiment'],i['tRate'], i['tCount'], i['tIsPos'],i['tGoodComment'][:10],
                    i['tBadComment'][:10])
 
@@ -218,7 +230,7 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
         save()
 
 if __name__ == '__main__':
-    product_id = 3899582       #4297772
+    product_id = 4297772       #4297772，3899582
     database = 'jd'
     comments_degree_collection = 'comments_degree_%d' % product_id
     purged_comments_collection = 'purged_comments_%d' % product_id
@@ -237,10 +249,10 @@ if __name__ == '__main__':
     #assess_comment_classfication(spark,database,comments_degree_collection,purged_comments_collection)
 
     product_summary_collection = 'product_summary'
-    temp_degrees_collections = 'temp_degrees_%d' % product_id
+    temp_degrees_collections = 'temp_degrees_%d' % product_id   # 即评论中的所以特征评价对
 
     summarizing_product_statistics(spark,product_id,database,comments_degree_collection,temp_degrees_collections,
-                                   features_collection,product_summary_collection)
+                                    features_collection,product_summary_collection)
 
-    # extract_single_degrees(spark,database,comments_degree_collection,temp_degrees_collections)
+    #extract_single_degrees(spark,database,comments_degree_collection,temp_degrees_collections)
     pass
