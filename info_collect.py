@@ -94,28 +94,28 @@ if __name__ == '__main__':
     iphone7s, 9000+,  3995645,    fetchJSON_comment98vv12276
     
     '''
-    product_id = 3899582
-    cback = 'fetchJSON_comment98vv54010'
-    maxsize = 41000
+    product_id = 2967927
+    cback = 'fetchJSON_comment98vv64799'
+    maxsize = 60000
 
     database = 'jd'
     raw_comments_collection = 'raw_comments_%d'%product_id
 
     # ******************修改celeryconfig backend*************************
-    #crawl_pruduct_comments(product_id, cback, maxsize)
+    crawl_pruduct_comments(product_id, cback, maxsize)
 
-    app_name = 'info_collect'
-    master_name = 'spark://caiwencheng-K53BE:7077'
-    my_spark = SparkSession \
-        .builder \
-        .appName(app_name) \
-         .master(master_name) \
-        .getOrCreate()
-    # 有一定的时间间隔，等异步任务执行完
-    formatted_comments_collection = 'formatted_comments_%d'%product_id
+    # app_name = 'info_collect'
+    # master_name = 'spark://caiwencheng-K53BE:7077'
+    # my_spark = SparkSession \
+    #     .builder \
+    #     .appName(app_name) \
+    #      .master(master_name) \
+    #     .getOrCreate()
+    # # 有一定的时间间隔，等异步任务执行完
+    # formatted_comments_collection = 'formatted_comments_%d'%product_id
     #format_comments(my_spark,product_id,database,raw_comments_collection,formatted_comments_collection)
 
     purged_comments_collection = 'purged_comments_%d'%product_id
-    pre_process_comments(my_spark,database,formatted_comments_collection,purged_comments_collection)
+    #pre_process_comments(my_spark,database,formatted_comments_collection,purged_comments_collection)
 
     pass
