@@ -1,12 +1,12 @@
 # coding=utf-8
 import json
 import os
-from collections import Counter
 
-import operator
 from pymongo import MongoClient
 from pyspark import Row
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StructField, LongType, ArrayType, StructType, IntegerType, StringType, MapType, FloatType, \
+    DoubleType
 
 from adv_table import ADV_CONJ_TABLE, NEG_ADV_TABLE
 from pairs_extract import build_re
@@ -56,7 +56,7 @@ def get_evalMulTuples(cFeaSen, cDpResult):
         for FeaSenPair in s_FeaSenPairs:
             # 过滤不合格特征，都满足了
             # 待寻找的否定词
-            deg_adj = None
+            deg_adj = {}  #应当初始化为空词
             # 只从该分句的特征词和情感词之间找否定副词
             for w in filter(lambda x: FeaSenPair['feature']['id'] < x['id'] < FeaSenPair['sentiment']['id'],
                             s_dp_result):
@@ -147,7 +147,6 @@ def bulid_sentimeng_dict():
             if c < u'\u4e00' or c > u'\u9fff':
                 return False
         return True
-
 
     app_name = '[APP] bulid_sentimeng_dict'
     master_name = 'spark://caiwencheng-K53BE:7077'
@@ -304,9 +303,56 @@ def calculate_sentiment_degree(spark,database,eval_mul_tuple_collection,comments
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",comments_degree_collection).\
         save()
 
+def transfrom_comment_degrees(spark, database, comments_degree_collection):
+    def deserialize(d):
+        d.pop('_id')
+        for k, v in d.items():
+            if k == 'cDegrees':
+                d[k] = json.loads(v)
+                for sd in d[k]:
+                    for i in sd['sDegrees']:
+                        i['negAdv'] = {} if not i['negAdv'] else i['negAdv']
+            else:
+                d[k] = v
+
+        return d
+
+    degrees_df = spark.read.format("com.mongodb.spark.sql.DefaultSource"). \
+        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
+                                                                                  comments_degree_collection).\
+        load()
+
+    degrees_rdd = degrees_df.rdd.map(lambda y: y.asDict(recursive=True)). \
+        map(lambda x: deserialize(x))
+
+    fields = [
+        StructField('pId', LongType(), False),
+        StructField('cId', LongType(), False),
+        StructField('cDegValue', DoubleType(), False),
+        StructField('cDegrees',
+                    ArrayType(
+                        StructType([
+                            StructField('sId', IntegerType(), True),
+                            StructField('sDegrees', ArrayType(
+                                StructType([
+                                    StructField('feature', MapType(StringType(), StringType(), True), True),
+                                    StructField('sentiment', MapType(StringType(), StringType(), True), True),
+                                    StructField('negAdv', MapType(StringType(), StringType(), True), True),
+                                    StructField('relate', StringType(), False),
+                                    StructField('degValue', IntegerType(), True)
+                                ]), True), True)
+                        ]), True), True)
+    ]
+
+    schema = StructType(fields)
+    temp = spark.createDataFrame(degrees_rdd, schema)
+    temp.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite"). \
+        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
+                                                                                  'temp3'). \
+        save()
 
 if __name__ == '__main__':
-    product_id = 3899582  #4297772
+    product_id = 4297772  #4297772
     database = 'jd'
     dp_collection = 'comments_dp_%d'%product_id
     fea_sen_pairs_collection= 'fea_sen_pairs_%d'%product_id
@@ -324,10 +370,11 @@ if __name__ == '__main__':
         .getOrCreate()
 
     comments_degree_collection = 'comments_degree_%d'%product_id
-    calculate_sentiment_degree(spark, database, eval_mul_tuples_collection, comments_degree_collection)
+    #calculate_sentiment_degree(spark, database, eval_mul_tuples_collection, comments_degree_collection)
     #
     # product_summary_collection = 'product_summary_%d'%product_id
     # purged_comments_collection = 'purged_comments'
     # summary_comment_classfication(spark,database,comments_degree_collection,purged_comments_collection,
     #                               product_summary_collection)
+    transfrom_comment_degrees(spark,database,comments_degree_collection)  #有bug
     pass

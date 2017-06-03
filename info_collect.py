@@ -12,12 +12,6 @@ from celery_app import tasks
 
 
 def crawl_pruduct_comments(id, cback, maxsize):
-    '''
-    
-    :param id:   #  如 4297772 诺基亚6   3133811 iphone7lus
-    :param cback: @ 如fetchJSON_comment98vv49564,fetchJSON_comment98vv75201(对应上)
-    :return: 
-    '''
     base_url = 'https://club.jd.com/comment/skuProductPageComments.action?' \
                'callback=@&productId=#&score=0&sortType=5&' \
                'page=$&pageSize=10&isShadowSku=0'.replace('@', cback).replace('#', str(id))
@@ -83,16 +77,13 @@ def pre_process_comments(spark, database, formatted_collection,purged_collection
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", purged_collection). \
         save()
 
-
 if __name__ == '__main__':
-
 
     '''
     vivo x9,  1.1万， 11126974481，fetchJSON_comment98vv15138
     oppo R9s, 4.6万， 3899582，    fetchJSON_comment98vv54010  4.1万
     荣耀8，    6.1万， 2967927，    fetchJSON_comment98vv64799
     iphone7s, 9000+,  3995645,    fetchJSON_comment98vv12276
-    
     '''
     product_id = 2967927
     cback = 'fetchJSON_comment98vv64799'
@@ -117,5 +108,4 @@ if __name__ == '__main__':
 
     purged_comments_collection = 'purged_comments_%d'%product_id
     #pre_process_comments(my_spark,database,formatted_comments_collection,purged_comments_collection)
-
     pass

@@ -55,12 +55,6 @@ def format_dp_comments(spark, database, dp_collection, formatted_dp_collection):
         filter(lambda x: x['status'] == 'SUCCESS'). \
         map(lambda x: json.loads(x['result'])). \
         filter(lambda x: x)
-        #map(lambda x: temp_transform(x))
-
-    # StructType([MapType(StringType, IntegerType(), True),
-    #     MapType(StringType, ArrayType(MapType(StringType, StringType, True), True),True)
-    # ])
-
 
     fields = [
         StructField('pId', LongType(), False),
@@ -69,8 +63,8 @@ def format_dp_comments(spark, database, dp_collection, formatted_dp_collection):
                     ArrayType(
                         StructType([
                             StructField('sId', IntegerType(), True),
-                            StructField('sDpResult',ArrayType(MapType(StringType(), StringType(), True),
-                                                True))
+                            StructField('sDpResult', ArrayType(MapType(StringType(), StringType(), True),
+                                                               True))
                         ]),
                         True),
                     True)
@@ -161,11 +155,7 @@ def extract_comments_dp_pairs(spark, database, formatted_dp_collection, dp_paris
                                                                                   formatted_dp_collection). \
         load()
 
-    # formatted_dp_rdd = dp_df.rdd.map(lambda y: y.asDict(recursive=True)). \
-    #     map(lambda x: json.loads(x['result']))
-
     formatted_dp_rdd = formatted_dp_df.toJSON().map(lambda x: json.loads(x))
-
     dp_pairs_rdd = formatted_dp_rdd.map(lambda x: getCDpPairs(x))
 
     test = dp_pairs_rdd.take(20)
@@ -179,13 +169,9 @@ def extract_comments_dp_pairs(spark, database, formatted_dp_collection, dp_paris
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", dp_paris_collection). \
         save()
 
-
 feature_word_dict = {}
 temp_feature_word_dict = {}
 temp_sentiment_word_dict = {}
-
-
-# feed_sentiment_words = {}
 
 def extract_sentiment(dpPairStr, senti_judge_fuction, *args):
     global feature_word_dict
@@ -419,25 +405,21 @@ def extract_fea_sen_pairs(spark, database, dp_pairs_collection, fea_sen_pairs_co
         mode("overwrite").option("uri", "mongodb://127.0.0.1/").option("database", database). \
         option("collection", 'sentiment_word_%d' % product_id).save()
 
-def transfrom_fea_sen_pairs(spark, database, fea_sen_pairs_collection):
 
+def transfrom_fea_sen_pairs(spark, database, fea_sen_pairs_collection):
     def deserialize(d):
         d.pop('_id')
-        for k,v in d.items():
+        for k, v in d.items():
             d[k] = json.loads(v) if k == 'cFeaSenPairs' else v
         return d
 
     fea_sen_pairs_df = spark.read.format("com.mongodb.spark.sql.DefaultSource"). \
-        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection", fea_sen_pairs_collection). \
+        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
+                                                                                  fea_sen_pairs_collection). \
         load()
 
     fea_sen_pairs_rdd = fea_sen_pairs_df.rdd.map(lambda y: y.asDict(recursive=True)). \
         map(lambda x: deserialize(x))
-    # map(lambda x: temp_transform(x))
-
-    # StructType([MapType(StringType, IntegerType(), True),
-    #     MapType(StringType, ArrayType(MapType(StringType, StringType, True), True),True)
-    # ])
 
     fields = [
         StructField('pId', LongType(), False),
@@ -451,8 +433,8 @@ def transfrom_fea_sen_pairs(spark, database, fea_sen_pairs_collection):
                                     StructField('feature', MapType(StringType(), StringType(), True), True),
                                     StructField('sentiment', MapType(StringType(), StringType(), True), True),
                                     StructField('relate', StringType(), False),
-                                ]),True),True)
-                        ]),True),True)
+                                ]), True), True)
+                        ]), True), True)
     ]
 
     schema = StructType(fields)
@@ -461,6 +443,45 @@ def transfrom_fea_sen_pairs(spark, database, fea_sen_pairs_collection):
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
                                                                                   'temp'). \
         save()
+
+
+def transfrom_dp_pairs(spark, database, dp_pairs_collection):
+    def deserialize(d):
+        d.pop('_id')
+        for k, v in d.items():
+            d[k] = json.loads(v) if k == 'cDpPairs' else v
+        return d
+
+    dp_pairs_df = spark.read.format("com.mongodb.spark.sql.DefaultSource"). \
+        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",dp_pairs_collection).\
+        load()
+
+    dp_pairs_rdd = dp_pairs_df.rdd.map(lambda y: y.asDict(recursive=True)). \
+        map(lambda x: deserialize(x))
+
+    fields = [
+        StructField('pId', LongType(), False),
+        StructField('cId', LongType(), False),
+        StructField('cDpPairs',
+                    ArrayType(
+                        StructType([
+                            StructField('sId', IntegerType(), True),
+                            StructField('sDpPairs', ArrayType(
+                                StructType([
+                                    StructField('first', MapType(StringType(), StringType(), True), True),
+                                    StructField('second', MapType(StringType(), StringType(), True), True),
+                                    StructField('wRelate', StringType(), False),
+                                ]), True), True)
+                        ]), True), True)
+    ]
+
+    schema = StructType(fields)
+    temp = spark.createDataFrame(dp_pairs_rdd, schema)
+    temp.write.format("com.mongodb.spark.sql.DefaultSource").mode("overwrite"). \
+        option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
+                                                                                  'temp2'). \
+        save()
+
 
 if __name__ == '__main__':
     product_id = 4297772  # 4297772  3899582
@@ -481,7 +502,8 @@ if __name__ == '__main__':
     comments_dp_collection = 'comments_dp_%d' % product_id
     dp_pairs_collection = 'comments_dp_pairs_%d' % product_id
     fea_sen_pairs_collection = 'fea_sen_pairs_%d' % product_id
-    #format_dp_comments(my_spark, database, temp_dp_collection, comments_dp_collection)
+    # format_dp_comments(my_spark, database, temp_dp_collection, comments_dp_collection)
     # extract_comments_dp_pairs(my_spark,database,comments_dp_collection,dp_pairs_collection)
-    # extract_fea_sen_pairs(my_spark,database,dp_pairs_collection,fea_sen_pairs_collection)
-    transfrom_fea_sen_pairs(my_spark,database,fea_sen_pairs_collection)
+    #extract_fea_sen_pairs(my_spark, database, dp_pairs_collection, fea_sen_pairs_collection)
+    # transfrom_fea_sen_pairs(my_spark,database,fea_sen_pairs_collection)
+    transfrom_dp_pairs(my_spark,database,dp_pairs_collection)

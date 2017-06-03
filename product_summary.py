@@ -50,46 +50,6 @@ def assess_comment_classfication(spark,database, comments_degree_collection, pur
     print '召回率 R', r
     print 'F值', p * r * 2 / (p + r)
 
-    # c_degrees_rdd = c_degrees_df.rdd.map(lambda y: y.asDict(recursive=True))
-    # # 假定极性值大于0.5的评论为正向，小于-0.5的为负向，过滤-0.5~0.5
-    # valid_degrees_rdd = c_degrees_rdd \
-    #     .filter(lambda x: x['cDegValue'] > 0.5 or x['cDegValue'] < -0.5) \
-    #     .map(lambda z: (z['cId'], 1 if z['cDegValue'] > 0 else -1)) \
-    #     .sortBy(lambda x: x[0])  # 注意这里cid,degree排序了
-    # valid_degrees_rdd.cache()
-
-    # 建立有效情感评论集的k,v字典，作为广播变量用于过滤原始评论
-    # valid_degrees_map = valid_degrees_rdd.collectAsMap()
-    # broadcast_degrees_map = spark.sparkContext.broadcast(valid_degrees_map)
-
-
-
-    # 中评评论id
-    # ori_zero_comm_map =  ori_comm_df.rdd.filter(lambda x : 1 < x.score < 4).\
-    #     map(lambda y : (y.cId,1)).\
-    #     collectAsMap()
-    #
-    # # 原始评分4,5为好评，1为差评,过滤2,3中评
-    # ori_valid_comm_rdd = ori_comm_df.rdd.map(lambda y: y.asDict(recursive=True)). \
-    #     filter(lambda x: x['score'] > 3 or x['score'] < 2 ). \
-    #     map(lambda z: (z['cId'], 1 if z['score'] > 3 else -1)). \
-    #     sortBy(lambda x: x[0])
-    # ori_valid_comm_rdd.cache()
-    # # 计算精确率(正向而言)
-    # tp = ori_valid_comm_rdd.zip(valid_degrees_rdd). \
-    #     filter(lambda z: z[0] == z[1] and z[0] > 0). \
-    #     count()
-    # classified_true = valid_degrees_rdd.filter(lambda x: x[1] > 0).count()
-    # actually_true = ori_valid_comm_rdd.filter(lambda x: x[1] > 0).count()
-    # all_count = valid_degrees_rdd.count()
-    #
-    # print '{0},{1},{2},{3}'.format(tp, classified_true, actually_true,all_count)
-    # p = tp / float(classified_true)
-    # r = tp / float(actually_true)
-    # print '精确率 P', p
-    # print '召回率 R', r
-    # print 'F值', p * r * 2 / (p + r)
-
 
 def extract_single_degrees(spark,database,comments_degree_collection,temp_degrees_collections):
 
@@ -199,19 +159,10 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
                                                                                   features_collection).load()
     features_rdd = features_df.sort(features_df.freq.desc()).rdd
     features_rdd.cache()
-    # temp = []
-    # for t in features_rdd.take(5):
-    #     temp.append(get_hot_tag_statistics(t,database,temp_degrees_collection))
 
     # 是按特征评价多元组来的，并非是评论句子级别
     ori_tag_statistics = features_rdd.map(
         lambda x : get_hot_tag_statistics(x,database,temp_degrees_collection)).collect()
-
-    # tag_purged_statistics = filter(
-    #     lambda z : (z['tIsPos'] and z['tCount'] > 100 and z['tRate'] > 0.75) or
-    #                (not z['tIsPos'] and z['tCount'] > 2 and z['tRate'] > 0.6),
-    #            filter(lambda x : len(x) > 0,ori_tag_statistics))
-    # tag_purged_statistics = filter(lambda x: len(x) > 0, ori_tag_statistics)
 
     # len(x)>0 是除去原始评论中可能不存在相关特征
     pos_tag_statistics = filter(lambda x: len(x) > 0 and x['tIsPos'], ori_tag_statistics)
@@ -243,9 +194,6 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
     c_degrees_df = spark.read.format("com.mongodb.spark.sql.DefaultSource"). \
         option("uri", "mongodb://127.0.0.1/").option("database", database).option("collection",
                                                                                   comments_degree_collection).load()
-    # valid_degrees_rdd = c_degrees_df.rdd.map(lambda y: y.asDict(recursive=True)).\
-    #     filter(lambda x : x['cDegValue'] != 0)
-    # valid_degrees_rdd.cache()
 
     # 产品总体评价
     valid_comments_count = c_degrees_df.count()
@@ -273,7 +221,7 @@ def summarizing_product_statistics(spark,product_id,database,comments_degree_col
         save()
 
 if __name__ == '__main__':
-    product_id = 3899582       #4297772，3899582
+    product_id = 4297772       #4297772，3899582
     database = 'jd'
     comments_degree_collection = 'comments_degree_%d' % product_id
     purged_comments_collection = 'purged_comments_%d' % product_id
